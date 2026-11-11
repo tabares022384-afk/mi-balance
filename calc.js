@@ -292,6 +292,13 @@
       for (const a of r.alertas) if (!a.soloJornada || a.nivel === 'inconsistente') r.estado = peor(r.estado, a.nivel);
       if (combEstado === 'estimado' && r.estado === 'confirmado') r.estado = 'aproximado';
 
+      // Valor del kilómetro: lo que deja cada km después de pagar la gasolina (antes de ahorro, cuota y Pozo).
+      r.neto = trabaja && I != null ? I - F : null;
+      r.netoKm = r.neto != null && km > 0 ? r.neto / km : null;
+      r.netoHora = r.neto != null && horas > 0 ? r.neto / horas : null;
+      r.combKm = trabaja && km > 0 ? F / km : null;
+      r.fracAire = horasCon + horasSin > 0 ? horasCon / (horasCon + horasSin) : null;
+
       res.push(r); porFecha[f] = r;
     }
 
@@ -415,8 +422,22 @@
     };
   }
 
+  // Resumen del valor del km de un grupo de días (promedio PONDERADO: total neto ÷ total km, no promedio de promedios).
+  function estadKm(lista) {
+    const d = lista.filter(r => r.trabaja && r.ingreso != null && r.km > 0);
+    const s = (c, l = d) => l.reduce((a, r) => a + (r[c] || 0), 0);
+    const km = s('km'), ingreso = s('ingreso'), comb = s('combustible'), neto = ingreso - comb;
+    const conH = d.filter(r => r.horas > 0), horas = s('horas', conH), netoH = s('neto', conH);
+    return {
+      dias: d.length, km, ingreso, comb, neto, horas,
+      brutoKm: km > 0 ? ingreso / km : null, combKm: km > 0 ? comb / km : null, netoKm: km > 0 ? neto / km : null,
+      netoHora: horas > 0 ? netoH / horas : null, kmDia: d.length ? km / d.length : null,
+      provisional: d.some(r => r.combEstado === 'estimado')
+    };
+  }
+
   function letraANum(l) { let n = 0; for (const c of String(l || 'A')) n = n * 26 + (c.charCodeAt(0) - 64); return n - 1; }
 
-  const Calc = { calcular, vigente, fmt, CONFIG_INICIAL, DIAS, DIAS_CORTOS, MESES, NIVEL, hoy, fechaDe, aTexto, diaSemana, sumarDias, mesDe, sumarMes, diasDelMes, letraDe, esNum };
+  const Calc = { calcular, estadKm, vigente, fmt, CONFIG_INICIAL, DIAS, DIAS_CORTOS, MESES, NIVEL, hoy, fechaDe, aTexto, diaSemana, sumarDias, mesDe, sumarMes, diasDelMes, letraDe, esNum };
   if (typeof module !== 'undefined' && module.exports) module.exports = Calc; else raiz.Calc = Calc;
 })(typeof self !== 'undefined' ? self : this);

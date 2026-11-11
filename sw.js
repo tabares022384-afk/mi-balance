@@ -1,6 +1,6 @@
 // Mi Balance — funcionamiento sin conexión. Guarda la aplicación en el teléfono y la abre aunque no haya internet.
 // Para publicar una versión nueva: cambiar VERSION. La app avisa «Hay una versión nueva» y se actualiza solo cuando Edwin toca el aviso.
-const VERSION = 'mi-balance-v1';
+const VERSION = 'mi-balance-v2';
 const ARCHIVOS = ['./', './index.html', './calc.js', './db.js', './app.js','./excel_azul.js', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
 
 self.addEventListener('install', e => {

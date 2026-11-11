@@ -108,7 +108,7 @@
   // ---------------------------------------------------------------- navegación
   const RUTAS = {
     inicio: vInicio, jornada: vJornada, tanqueos: vTanqueos, tanqueo: vTanqueo, pozo: vPozo, gasto: vGasto, ahorro: vAhorro,
-    cuota: vCuota, informes: vInformes, mas: vMas, config: vConfig, respaldo: vRespaldo, auditoria: vAuditoria, ayuda: vAyuda
+    cuota: vCuota, informes: vInformes, km: vKm, mas: vMas, config: vConfig, respaldo: vRespaldo, auditoria: vAuditoria, ayuda: vAyuda
   };
   function pintar() {
     const h = location.hash.replace(/^#\/?/, '') || 'inicio';
@@ -190,7 +190,8 @@
     h += tarjeta('💵 Ingreso bruto Uber', F.dinero(M.ingreso), `${M.trabajadas} días trabajados`, '#/informes/1');
     h += tarjeta('🛣️ Kilómetros', F.num(M.km) + ' km', M.trabajadas ? `promedio ${F.num(M.km / M.trabajadas)} km por día` : '', '#/informes/1');
     h += tarjeta('🎯 Meta cumplida', `${M.metaCumplidas} de ${M.jornadasMeta}`, M.metaConPozo ? `+${M.metaConPozo} completadas con el Pozo` : 'jornadas oficiales y novedades', '#/informes/1/meta');
-    h += tarjeta('⚡ Productividad', M.ingresoKm != null ? F.dinero(M.ingresoKm) + '/km' : '—', M.ingresoHora != null ? F.dinero(M.ingresoHora) + ' por hora' : '', '#/informes/1');
+    const K = Calc.estadKm(M.jornadas);
+    h += tarjeta('🛣️ Valor de tu km', K.netoKm != null ? `<span class="bien">${F.dinero(K.netoKm)}</span><span class="peq suave">/km</span>` : '—', K.netoKm != null ? `neto de gasolina · bruto ${F.dinero(K.brutoKm)}/km · ${F.dinero(K.netoHora)}/h` : 'aún sin jornadas', '#/km');
     h += tarjeta('⛽ Combustible pagado', `<span class="c-comb">${F.dinero(M.pagado)}</span>`, `asignado a las jornadas: ${F.dinero(M.combustible)}`, '#/tanqueos');
     h += tarjeta('📈 Rendimiento real', F.num(ref.rendimiento) + ' km/gal' + (ref.real ? '' : '*'),
       ref.real ? (ref.mejor && ref.mejor !== ref.peor ? `mejor ${ref.mejor.nombre}: ${F.num(ref.mejor.rendimiento)} · menor ${ref.peor.nombre}: ${F.num(ref.peor.rendimiento)}` : 'km totales ÷ galones totales') : '*estimado: aún no hay intervalos cerrados', '#/informes/3');
@@ -490,7 +491,7 @@
     h += '</div><p class="ayuda">Cada tanque <b>lleno</b> cierra el intervalo anterior y abre uno nuevo. Si tanqueas a mitad de jornada, en la jornada agrega un segundo tramo con el intervalo nuevo.</p>';
     h += '<h2>Intervalos</h2><div class="lista">' + (C.intervalos.slice().reverse().map(htmlIntervalo).join('') || '<p class="suave">Aún no hay tanques llenos registrados.</p>') + '</div>';
     h += '<h2>Tanqueos</h2><div class="lista">' + C.tanqueos.slice().reverse().map(t => `<button class="item" data-ir="#/tanqueo/${t.id}"><div class="arriba"><b>Tanqueo ${esc(t.letra)} · ${F.fecha(t.fecha)}${t.hora ? ' · ' + esc(t.hora) : ''}</b><span class="valor">${F.dinero(t.valor)}</span></div><div class="datos"><span>${esNum(t.galones) ? '<b>' + F.num(t.galones, 2) + '</b> gal' : 'galones —'}</span>${esNum(t.galones) && esNum(t.valor) ? `<span><b>${F.dinero(t.valor / t.galones)}</b>/gal</span>` : ''}<span>${t.lleno ? '🟢 Lleno' : '🟡 Parcial'}</span>${etiqueta(t.estado || 'confirmado')}</div></button>`).join('') + '</div>';
-    return { titulo: 'Tanqueos', html: h, nav: 'tanqueos' };
+    return { titulo: 'Tanqueos', html: h, nav: 'mas' };
   }
   let TQ = null;
   function vTanqueo(id) {
@@ -511,7 +512,7 @@
       ${!ex && abierto ? `<div class="caja"><p class="peq">Si es tanque lleno, se cierra el intervalo <b>${esc(abierto.nombre.replace('…', t.letra))}</b> (${F.num(abierto.km)} km hasta ahora) y se abre <b>${esc(t.letra)} → …</b>.</p></div>` : ''}
       <div class="botones"><button type="submit" class="btn prim" style="min-height:66px">💾 Guardar tanqueo</button>${ex ? '<button type="button" class="btn peligro" data-accion="tqBorrar">🗑️ Eliminar tanqueo</button>' : ''}</div></form>`;
     return {
-      titulo: ex ? 'Tanqueo ' + ex.letra : 'Registrar tanqueo', atras: true, nav: 'tanqueos', html: h,
+      titulo: ex ? 'Tanqueo ' + ex.letra : 'Registrar tanqueo', atras: true, nav: 'mas', html: h,
       despues: () => {
         const f = $('#formT');
         const precio = () => { const v = leerDinero($('#qValor').value), g = leerDecimal($('#qGal').value); $('#qPrecio').innerHTML = v && g ? `Precio por galón: <b>${F.dinero(v / g)}</b> (configurado: ${F.dinero(C.precio($('#qFecha').value || C.hoy))})` : ''; };
@@ -618,8 +619,9 @@
     GS = g;
     const conceptos = ['Lavado de chasis', 'Mantenimiento', 'Reparación', 'Llantas', 'Otro gasto del carro'];
     let h = `<form id="formG" autocomplete="off" novalidate>
-      <div class="campo"><label for="gFecha">Fecha</label><input type="date" id="gFecha" value="${g.fecha || ''}" max="${C.hoy}" ${g.fecha ? '' : 'disabled'}>
-        <label class="ayuda" style="display:flex;align-items:center;gap:10px;min-height:44px"><input type="checkbox" id="gSinFecha" style="width:26px;min-height:26px" ${g.fecha ? '' : 'checked'}> No sé la fecha exacta (queda pendiente)</label></div>
+      <div class="campo"><label for="gFecha">📅 Fecha del gasto</label><input type="date" id="gFecha" value="${g.fecha || ''}" max="${C.hoy}">
+        <div class="ayuda" id="gFechaAyuda">${g.fecha ? '' : '⏳ Aún sin fecha: toca la casilla de arriba y elige el día.'}</div>
+        <label class="ayuda" style="display:flex;align-items:center;gap:10px;min-height:48px"><input type="checkbox" id="gSinFecha" style="width:26px;min-height:26px" ${g.fecha ? '' : 'checked'}> No sé la fecha exacta (queda pendiente)</label></div>
       <div class="campo"><span class="etq">Concepto</span><div class="chips">${conceptos.map(c => `<button type="button" class="chip mini ${g.concepto === c ? 'on' : ''}" data-accion="gsConcepto" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>
         <input id="gConcepto" style="margin-top:8px" placeholder="O escribe el concepto" value="${esc(g.concepto)}"></div>
       <div class="campo"><label for="gValor">💵 Valor</label><input id="gValor" class="grande" inputmode="numeric" placeholder="$ 0" value="${verDinero(g.valor)}"></div>
@@ -632,7 +634,9 @@
       despues: () => {
         const f = $('#formG');
         f.addEventListener('input', e => { if (e.target.id === 'gValor') e.target.value = verDinero(leerDinero(e.target.value)); });
-        $('#gSinFecha').addEventListener('change', e => { $('#gFecha').disabled = e.target.checked; });
+        // La casilla de fecha nunca se bloquea: al elegir un día se quita «No sé la fecha»; al marcarla se borra el día.
+        $('#gFecha').addEventListener('input', e => { if (e.target.value) { $('#gSinFecha').checked = false; $('#gFechaAyuda').textContent = ''; } });
+        $('#gSinFecha').addEventListener('change', e => { if (e.target.checked) { $('#gFecha').value = ''; $('#gFechaAyuda').textContent = '⏳ Quedará pendiente de fecha.'; } });
         f.addEventListener('submit', e => { e.preventDefault(); guardarGasto().catch(err => console.error(err)); });
       }
     };
@@ -641,7 +645,7 @@
   ACC.gsEstado = el => { GS.estado = el.dataset.v; el.parentElement.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === el)); };
   async function guardarGasto() {
     const g = GS, ex = D.pozo.find(m => m.id === g.id);
-    g.fecha = $('#gSinFecha').checked ? null : $('#gFecha').value || null;
+    g.fecha = $('#gFecha').value || null;
     g.concepto = $('#gConcepto').value.trim(); g.valor = leerDinero($('#gValor').value); g.justificacion = $('#gJust').value.trim();
     if (g.fecha && g.fecha > C.hoy) return toast('No se pueden registrar días que aún no pasan', true);
     if (!g.concepto) return toast('Falta el concepto', true);
@@ -692,15 +696,83 @@
   function vInformes(n = '1', extra) {
     n = String(n);
     if (n === '1' && extra === 'meta') filtroTipos = new Set(['oficial', 'novedad']);
-    let h = selectorMes() + `<div class="tabs">${[['1', '📅 Día a día'], ['2', '📊 Acumulados'], ['3', '⛽ Combustible'], ['g', '📈 Gráficas']].map(([k, t]) => `<button class="chip ${n === k ? 'on' : ''}" data-ir="#/informes/${k}">${t}</button>`).join('')}</div>`;
-    if (n === '1') h += informe1(); else if (n === '2') h += informe2(); else if (n === '3') h += informe3(); else h += informeGraficas();
-    return { titulo: 'Informes', html: h, nav: 'mas' };
+    let h = selectorMes() + `<div class="tabs">${[['1', '📅 Día a día'], ['k', '🛣️ Mi km'], ['2', '📊 Acumulados'], ['3', '⛽ Combustible'], ['g', '📈 Gráficas']].map(([k, t]) => `<button class="chip ${n === k ? 'on' : ''}" data-ir="#/informes/${k}">${t}</button>`).join('')}</div>`;
+    if (n === '1') h += informe1(); else if (n === 'k') h += informeKm(); else if (n === '2') h += informe2(); else if (n === '3') h += informe3(); else h += informeGraficas();
+    return { titulo: n === 'k' ? 'Mi kilómetro' : n === '1' ? 'Día a día' : 'Informes', html: h, nav: n === 'k' ? 'km' : n === '1' ? 'dia' : 'mas' };
   }
+  function vKm() { return vInformes('k'); }
+
+  // ================================================================ MI KILÓMETRO (cuánto deja cada km después de la gasolina)
+  function informeKm() {
+    const M = C.resumenMes(mesVista), E = Calc.estadKm;
+    const dias = M.jornadas.filter(r => r.trabaja && r.ingreso != null && r.km > 0);
+    const mes = E(M.jornadas), total = E(C.jornadas), prev = E(C.resumenMes(Calc.sumarMes(mesVista, -1)).jornadas);
+    let h = '<p class="ayuda">Valor neto del km = (ingreso de Uber − gasolina del día) ÷ km recorridos. Es lo que deja cada kilómetro antes de ahorro, cuota y Pozo. Los promedios son totales ÷ totales.</p>';
+    if (!dias.length) return h + '<div class="caja"><p class="suave">Aún no hay jornadas con ingreso y kilómetros en este mes.</p></div>';
+    const ult = dias[dias.length - 1], prom = mes.netoKm;
+    const cmp = (a, b) => (b == null || a == null ? '' : `<span class="${a >= b ? 'bien' : 'mal'}">${a >= b ? '▲' : '▼'} ${F.dinero(Math.abs(a - b))}</span>`);
+    h += '<div class="tarjetas">';
+    h += tarjeta(`🛣️ Último día (${F.fecha(ult.fecha)})`, F.dinero(ult.netoKm) + '<span class="peq suave">/km</span>', `${cmp(ult.netoKm, prom)} frente al promedio del mes`, '#/jornada/' + ult.fecha);
+    h += tarjeta('📅 Promedio del mes', `<span class="c-cuota">${F.dinero(prom)}</span><span class="peq suave">/km</span>`, `${mes.dias} días · ${F.num(mes.km)} km` + (prev.dias ? ` · ${cmp(prom, prev.netoKm)} vs mes anterior` : ''), '!irLista');
+    h += tarjeta('📈 Acumulado desde el inicio', F.dinero(total.netoKm) + '<span class="peq suave">/km</span>', `${total.dias} días · ${F.num(total.km)} km`, '!irLista');
+    h += tarjeta('⏱️ Neto por hora (mes)', F.dinero(mes.netoHora), mes.horas ? `${F.num(mes.horas)} horas registradas` : 'faltan horas', '!irLista');
+    h += tarjeta('💵 Bruto por km (mes)', F.dinero(mes.brutoKm), 'lo que paga Uber por km', '!irLista');
+    h += tarjeta('⛽ Gasolina por km (mes)', `<span class="c-comb">${F.dinero(mes.combKm)}</span>`, mes.provisional ? 'incluye días con gasolina provisional' : 'con lo realmente pagado', '#/informes/3');
+    h += '</div>';
+
+    // ---- Ideas para que el km valga más (con los datos reales de Edwin, desde el inicio)
+    const todos = C.jornadas.filter(r => r.trabaja && r.ingreso != null && r.km > 0);
+    const ideas = [];
+    const oficialesMes = M.oficialesMes || 21;
+    ideas.push(`Con tus ~${F.num(mes.kmDia, 0)} km por día, cada <b>$100 más por km</b> son <b>${F.dinero(100 * mes.kmDia)}</b> más por día y unos <b>${F.dinero(100 * mes.kmDia * oficialesMes)}</b> al mes (${oficialesMes} jornadas oficiales).`);
+    const porDia = {};
+    todos.forEach(r => { const d = Calc.diaSemana(r.fecha); (porDia[d] = porDia[d] || []).push(r); });
+    const filasDia = Object.keys(porDia).map(d => ({ d: +d, e: E(porDia[d]) })).sort((a, b) => b.e.netoKm - a.e.netoKm);
+    if (filasDia.length >= 2) {
+      const mejor = filasDia[0], peorD = filasDia[filasDia.length - 1];
+      ideas.push(`Tu mejor día de la semana es el <b>${Calc.DIAS[mejor.d].toLowerCase()}</b> (${F.dinero(mejor.e.netoKm)}/km) y el más flojo el <b>${Calc.DIAS[peorD.d].toLowerCase()}</b> (${F.dinero(peorD.e.netoKm)}/km).`);
+    }
+    const conAire = todos.filter(r => r.fracAire != null && r.fracAire >= 0.5), sinAire = todos.filter(r => r.fracAire != null && r.fracAire < 0.5);
+    if (conAire.length && sinAire.length) {
+      const a = E(conAire), s = E(sinAire);
+      ideas.push(`Días con aire la mitad del tiempo o más: <b>${F.dinero(a.netoKm)}/km</b> (${a.dias} días). Días con poco aire: <b>${F.dinero(s.netoKm)}/km</b> (${s.dias} días). La gasolina por km sube ${F.dinero(a.combKm - s.combKm)} con el aire.`);
+    }
+    if (todos.length >= 4) {
+      const orden = todos.slice().sort((a, b) => a.km - b.km), mitad = Math.floor(orden.length / 2);
+      const cortos = E(orden.slice(0, mitad)), largos = E(orden.slice(mitad));
+      ideas.push(`Días largos (más de ${F.num(orden[mitad].km, 0)} km): <b>${F.dinero(largos.netoKm)}/km</b> · días cortos: <b>${F.dinero(cortos.netoKm)}/km</b>. ${largos.netoKm >= cortos.netoKm ? 'Rodar más te está rindiendo.' : 'Los km de más te rinden menos: puede haber muchos km vacíos (sin pasajero).'}`);
+    }
+    const bajos = dias.filter(r => r.netoKm < prom).length;
+    ideas.push(`Este mes ${bajos} de ${dias.length} días quedaron por debajo de tu promedio. Revisa en la lista de abajo qué tuvieron en común (hora, zona, aire, km).`);
+    h += `<div class="caja pozo"><h3 style="margin-top:0" class="c-pozo">💡 Para que tu km valga más</h3>${ideas.map(t => `<p>• ${t}</p>`).join('')}<p class="peq suave">Calculado con tus jornadas reales. Con más días registrados, estas comparaciones se vuelven más confiables.</p></div>`;
+
+    h += grafica('gKm', '🛣️ Valor neto del km por día (verde = sobre tu promedio)', dias.map(r => ({
+      et: String(+r.fecha.slice(8)), v: r.netoKm, color: r.netoKm >= prom ? 'var(--bien)' : 'var(--mal)', ir: '#/jornada/' + r.fecha,
+      txt: F.fecha(r.fecha) + ' · ' + F.dinero(r.netoKm) + '/km neto · ' + F.num(r.km) + ' km'
+    })), { linea: prom, lineaTxt: 'promedio ' + F.dinero(prom) });
+
+    if (filasDia.length) {
+      h += '<h2>Por día de la semana <span class="peq suave">(desde el inicio)</span></h2><div class="caja"><div class="reparto">';
+      h += filasDia.map(x => ln(`${Calc.DIAS[x.d]} <span class="peq suave">· ${x.e.dias} día${x.e.dias === 1 ? '' : 's'}</span>`, `${F.dinero(x.e.netoKm)}/km · ${F.dinero(x.e.netoHora)}/h`)).join('');
+      h += '</div></div>';
+    }
+    const ord = dias.slice().sort((a, b) => b.netoKm - a.netoKm);
+    if (dias.length >= 4) {
+      const fila = r => `<a class="btn sec chico" style="width:100%;justify-content:space-between;margin:4px 0" href="#/jornada/${r.fecha}"><span>${F.fecha(r.fecha)} · ${F.num(r.km)} km</span><span>${F.dinero(r.netoKm)}/km</span></a>`;
+      h += `<div class="dos"><div><h3>🏆 Mejores días</h3>${ord.slice(0, 3).map(fila).join('')}</div><div><h3>🐢 Más flojos</h3>${ord.slice(-3).reverse().map(fila).join('')}</div></div>`;
+    }
+    h += `<h2 id="kmLista">Día a día de ${F.mes(mesVista)}</h2><button class="btn sec" data-accion="excel" data-q="km">📊 Descargar Excel del valor del km</button><div class="lista" style="margin-top:12px">`;
+    h += dias.slice().reverse().map(r => `<button class="item" data-ir="#/jornada/${r.fecha}"><div class="arriba"><b>${F.fecha(r.fecha)} · ${TIPOS[r.tipo][0]} ${TIPOS[r.tipo][1]}</b><span class="valor ${r.netoKm >= prom ? 'bien' : 'mal'}">${F.dinero(r.netoKm)}/km</span></div>
+      <div class="datos"><span>🛣️ <b>${F.num(r.km)}</b> km</span><span>💵 <b>${F.dinero(r.ingreso / r.km)}</b>/km bruto</span><span>⛽ <b>${F.dinero(r.combKm)}</b>/km${r.combEstado === 'estimado' ? ' (prov.)' : ''}</span><span>Neto del día <b>${F.dinero(r.neto)}</b></span>${r.netoHora != null ? `<span>⏱️ <b>${F.dinero(r.netoHora)}</b>/h</span>` : ''}${r.fracAire != null ? `<span>❄️ ${F.num(r.fracAire * 100, 0)} % con aire</span>` : ''}<span>${cmp(r.netoKm, prom)} vs promedio</span></div></button>`).join('');
+    h += '</div>';
+    return h;
+  }
+  ACC.irLista = () => { const t = $('#kmLista'); if (t) t.scrollIntoView({ behavior: 'smooth' }); };
   function itemDia(r) {
     if (r.pendiente) return `<button class="item pend" data-ir="#/jornada/${r.fecha}"><div class="arriba"><b>${F.fecha(r.fecha)}</b>${etiqueta('pendiente')}</div><div class="datos"><span>${r.oficialDia ? 'Día oficial' : 'Día no oficial'} sin registro · toca para registrar</span></div></button>`;
     const T = TIPOS[r.tipo];
     let d = '';
-    if (r.trabaja) d += `<span>🛣️ <b>${F.num(r.km)}</b> km</span><span>⏱️ <b>${F.num(r.horas)}</b> h</span><span>⛽ <b>${F.dinero(r.combustible)}</b>${r.combEstado === 'estimado' ? ' (prov.)' : ''}</span>`;
+    if (r.trabaja) d += `<span>🛣️ <b>${F.num(r.km)}</b> km</span><span>⏱️ <b>${F.num(r.horas)}</b> h</span><span>⛽ <b>${F.dinero(r.combustible)}</b>${r.combEstado === 'estimado' ? ' (prov.)' : ''}</span>${r.netoKm != null ? `<span>💎 <b>${F.dinero(r.netoKm)}</b>/km neto</span>` : ''}`;
     if (r.tipo === 'oficial' && r.ingreso != null) d += `<span>🎯 <b class="${r.difMeta >= 0 ? 'bien' : 'mal'}">${r.difMeta >= 0 ? '+' : ''}${F.dinero(r.difMeta)}</b></span>`;
     if (r.ahorro > 0) d += `<span>🐷 <b>${F.dinero(r.ahorro)}</b></span>`;
     if (r.excedente > 0) d += `<span>💧 <b>+${F.dinero(r.excedente)}</b></span>`;
@@ -789,16 +861,22 @@
     const q = el.dataset.q, M = C.resumenMes(mesVista), nm = F.mes(mesVista);
     let hoja, archivo;
     if (q === 'diario') {
-      const cols = [['Fecha', 'txt'], ['Día', 'txt'], ['Tipo de jornada', 'txt'], ['Ingreso bruto', 'int'], ['Meta diaria', 'int'], ['Diferencia frente a meta', 'int'], ['Km recorridos', 'dec1'], ['Diferencia frente a km de referencia', 'dec1'], ['Horas trabajadas', 'dec1'], ['Horas con aire', 'dec1'], ['Horas sin aire', 'dec1'], ['Combustible asignado', 'int'], ['Estado del combustible', 'txt'], ['Ahorro obligatorio', 'int'], ['Excedente al Pozo', 'int'], ['Apoyo del Pozo', 'int'], ['Cuota de la operación', 'int'], ['Dinero asignado a la cuota', 'int'], ['Ingreso por km', 'int'], ['Ingreso por hora', 'int'], ['Intervalos', 'txt'], ['Tramos', 'txt'], ['Estado', 'txt'], ['Observaciones', 'txt']];
-      const filas = M.filas.map(r => r.pendiente ? [F.fechaNum(r.fecha), r.dia, 'Sin registro', null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 'Pendiente', ''] : [
+      const cols = [['Fecha', 'txt'], ['Día', 'txt'], ['Tipo de jornada', 'txt'], ['Ingreso bruto', 'int'], ['Meta diaria', 'int'], ['Diferencia frente a meta', 'int'], ['Km recorridos', 'dec1'], ['Diferencia frente a km de referencia', 'dec1'], ['Horas trabajadas', 'dec1'], ['Horas con aire', 'dec1'], ['Horas sin aire', 'dec1'], ['Combustible asignado', 'int'], ['Estado del combustible', 'txt'], ['Ahorro obligatorio', 'int'], ['Excedente al Pozo', 'int'], ['Apoyo del Pozo', 'int'], ['Cuota de la operación', 'int'], ['Dinero asignado a la cuota', 'int'], ['Ingreso por km', 'int'], ['Ingreso por hora', 'int'], ['Valor neto por km', 'int'], ['Neto por hora', 'int'], ['Intervalos', 'txt'], ['Tramos', 'txt'], ['Estado', 'txt'], ['Observaciones', 'txt']];
+      const filas = M.filas.map(r => r.pendiente ? [F.fechaNum(r.fecha), r.dia, 'Sin registro', null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 'Pendiente', ''] : [
         F.fechaNum(r.fecha), r.dia, TIPOS[r.tipo][1], r.trabaja ? rd(r.ingreso) : null, r.meta || null, r.tipo === 'oficial' && r.ingreso != null ? rd(r.difMeta) : r.tipo === 'novedad' ? rd(r.difMeta) : null,
         r.trabaja ? r1(r.km) : null, r.trabaja ? r1(r.difKm) : null, r.trabaja ? r1(r.horas) : null, r.trabaja ? r1(r.horasCon) : null, r.trabaja ? r1(r.horasSin) : null,
         r.trabaja ? rd(r.combustible) : null, r.trabaja ? NOMBRE_ESTADO[r.combEstado] : '', rd(r.ahorro), rd(r.excedente), rd(r.apoyo), rd(r.cuotaOperativa), rd(r.cuota),
-        rd(r.ingresoKm), rd(r.ingresoHora), r.intervalos.join(', '), r.tramos.length > 1 ? r.tramos.map(t => (t.intervalo ? t.intervalo.nombre : '?') + ': ' + F.num(t.km) + ' km').join(' · ') : '',
+        rd(r.ingresoKm), rd(r.ingresoHora), rd(r.netoKm), rd(r.netoHora), r.intervalos.join(', '), r.tramos.length > 1 ? r.tramos.map(t => (t.intervalo ? t.intervalo.nombre : '?') + ': ' + F.num(t.km) + ' km').join(' · ') : '',
         NOMBRE_ESTADO[r.estado], r.jornada.obs || ''
       ]);
       hoja = { nombre: 'Detalle diario', columnas: cols.map(([t, tipo]) => ({ t, tipo })), filas };
       archivo = `Mi Balance - Dia a dia - ${nm}.xlsx`;
+    } else if (q === 'km') {
+      const dias = M.jornadas.filter(r => r.trabaja && r.ingreso != null && r.km > 0), E = Calc.estadKm(dias);
+      hoja = { nombre: 'Valor del km', columnas: [['Fecha', 'txt'], ['Día', 'txt'], ['Tipo de jornada', 'txt'], ['Km recorridos', 'dec1'], ['Horas', 'dec1'], ['% del tiempo con aire', 'int'], ['Ingreso bruto', 'int'], ['Gasolina asignada', 'int'], ['Estado de la gasolina', 'txt'], ['Neto del día (ingreso − gasolina)', 'int'], ['Bruto por km', 'int'], ['Gasolina por km', 'int'], ['Valor neto por km', 'int'], ['Neto por hora', 'int'], ['Diferencia vs promedio del mes', 'int']].map(([t, tipo]) => ({ t, tipo })),
+        filas: dias.map(r => [F.fechaNum(r.fecha), r.dia, TIPOS[r.tipo][1], r1(r.km), r1(r.horas), r.fracAire != null ? rd(r.fracAire * 100) : null, rd(r.ingreso), rd(r.combustible), NOMBRE_ESTADO[r.combEstado], rd(r.neto), rd(r.ingreso / r.km), rd(r.combKm), rd(r.netoKm), rd(r.netoHora), rd(r.netoKm - E.netoKm)])
+          .concat([['Total del mes', '', '', r1(E.km), r1(E.horas), null, rd(E.ingreso), rd(E.comb), '', rd(E.neto), rd(E.brutoKm), rd(E.combKm), rd(E.netoKm), rd(E.netoHora), null]]) };
+      archivo = `Mi Balance - Valor del km - ${nm}.xlsx`;
     } else if (q === 'pozo') {
       const P = M.pozo;
       hoja = { nombre: 'Pozo de Eficiencia', columnas: [['Fecha', 'txt'], ['Mes', 'txt'], ['Concepto', 'txt'], ['Tipo', 'txt'], ['Valor', 'int'], ['Justificación', 'txt'], ['Estado', 'txt'], ['Saldo resultante', 'int']].map(([t, tipo]) => ({ t, tipo })),
@@ -823,7 +901,9 @@
     const it = (ir, ic, t, sub) => `<button class="item" data-ir="${ir}"><div class="arriba"><b>${ic} ${t}</b><span>›</span></div>${sub ? `<div class="datos"><span>${sub}</span></div>` : ''}</button>`;
     const pend = C.auditoria.filter(a => a.nivel !== 'aproximado').length;
     const h = '<div class="lista">' +
+      it('#/tanqueos', '⛽', 'Tanqueos e intervalos', 'Registrar tanqueos, rendimiento real') +
       it('#/informes/1', '📅', 'Informe día a día', 'Detalle de cada jornada del mes') +
+      it('#/km', '🛣️', 'Mi kilómetro', 'Cuánto vale tu km neto de gasolina, por día y acumulado') +
       it('#/informes/2', '📊', 'Acumulados financieros', 'Cuota, ahorro, Pozo, combustible e ingresos') +
       it('#/informes/3', '⛽', 'Intervalos de combustible', 'Rendimiento y costo por km') +
       it('#/informes/g', '📈', 'Gráficas', '') +

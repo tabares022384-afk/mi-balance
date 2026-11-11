@@ -27,9 +27,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 .ico-btn:active{background:var(--panel2)}
 main{max-width:980px;margin:0 auto;padding:14px 16px}
 .abajo{position:fixed;bottom:0;left:0;right:0;z-index:6;background:var(--panel);border-top:1px solid var(--linea);display:grid;
-  grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom)}
+  grid-template-columns:repeat(6,1fr);padding-bottom:env(safe-area-inset-bottom)}
 .abajo a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:70px;color:var(--suave);text-decoration:none;
-  font-size:.82rem;font-weight:700}
+  font-size:.74rem;font-weight:700;white-space:nowrap}
 .abajo a .ic{font-size:1.55rem;line-height:1}
 .abajo a.activo{color:var(--acento)}
 .abajo a.activo .ic{transform:scale(1.1)}
@@ -159,7 +159,8 @@ details.traza div{font-size:.88rem;white-space:pre-wrap;color:var(--suave);paddi
 <nav class="abajo" id="nav">
   <a href="#/inicio" data-r="inicio"><span class="ic">🏠</span>Inicio</a>
   <a href="#/jornada" data-r="jornada"><span class="ic">➕</span>Jornada</a>
-  <a href="#/tanqueos" data-r="tanqueos"><span class="ic">⛽</span>Tanqueos</a>
+  <a href="#/informes/1" data-r="dia"><span class="ic">📅</span>Día a día</a>
+  <a href="#/km" data-r="km"><span class="ic">🛣️</span>Mi km</a>
   <a href="#/pozo" data-r="pozo"><span class="ic">💧</span>Pozo</a>
   <a href="#/mas" data-r="mas"><span class="ic">☰</span>Más</a>
 </nav>
