@@ -264,7 +264,27 @@
         tz('😴 Descanso: sin ingresos, sin kilómetros y sin movimientos.');
       }
 
+      // ---------- Carro − Uber: lo que cuesta ir por los servicios (km, tiempo y gasolina sin pasajero) ----------
+      const U = (trabaja && j.uber) || {};
+      const uKm = esNum(U.km) ? U.km : null, uMin = esNum(U.minutos) ? U.minutos : null, uViajes = esNum(U.viajes) ? U.viajes : null;
+      r.uberKm = uKm; r.uberHoras = uMin != null ? uMin / 60 : null; r.viajes = uViajes;
+      r.kmVacio = uKm != null && km > 0 ? Math.round((km - uKm) * 10) / 10 : null;
+      r.pctPagado = uKm != null && km > 0 ? uKm / km : null;
+      r.combVacio = r.kmVacio != null ? F * Math.max(0, r.kmVacio) / km : null;
+      r.horasVacio = uMin != null && horas > 0 ? horas - uMin / 60 : null;
+      r.ingresoKmUber = I != null && uKm > 0 ? I / uKm : null;
+      r.ingresoViaje = I != null && uViajes > 0 ? I / uViajes : null;
+      r.kmRecogida = r.kmVacio != null && uViajes > 0 ? r.kmVacio / uViajes : null;
+      r.minRecogida = r.horasVacio != null && uViajes > 0 ? (r.horasVacio * 60) / uViajes : null;
+      if (uKm != null || uMin != null || uViajes != null) {
+        tz('📱 Uber: ' + (uViajes != null ? uViajes + ' viajes · ' : '') + (uKm != null ? N(uKm) + ' km con pasajero' : 'km sin dato') + (uMin != null ? ' · ' + N(uMin / 60, 2) + ' h en viaje' : ''));
+        if (r.kmVacio != null) tz('🔁 Sin pasajero: ' + N(km) + ' km del carro − ' + N(uKm) + ' km de Uber = ' + N(r.kmVacio) + ' km (' + N((1 - r.pctPagado) * 100, 0) + ' %) · gasolina ' + D(F) + ' × ' + N(r.kmVacio) + ' ÷ ' + N(km) + ' = ' + D(r.combVacio));
+        if (r.horasVacio != null) tz('⌛ Tiempo sin pasajero: ' + N(horas, 2) + ' h trabajadas − ' + N(uMin / 60, 2) + ' h en viaje = ' + N(r.horasVacio, 2) + ' h');
+      }
+
       // ---------- Alertas de la jornada ----------
+      if (r.kmVacio != null && r.kmVacio < 0) al('inconsistente', 'Uber dice ' + N(uKm) + ' km y el carro marcó ' + N(km) + ' km: el trip del carro no puede ser menor');
+      if (r.horasVacio != null && r.horasVacio < -0.05) al('inconsistente', 'El tiempo en viaje de Uber es mayor que las horas trabajadas');
       if (trabaja) {
         if (I == null) al('pendiente', 'Falta el ingreso de Uber');
         if (!tramos.length) al('pendiente', 'Faltan los kilómetros');
@@ -432,7 +452,26 @@
       dias: d.length, km, ingreso, comb, neto, horas,
       brutoKm: km > 0 ? ingreso / km : null, combKm: km > 0 ? comb / km : null, netoKm: km > 0 ? neto / km : null,
       netoHora: horas > 0 ? netoH / horas : null, kmDia: d.length ? km / d.length : null,
-      provisional: d.some(r => r.combEstado === 'estimado')
+      provisional: d.some(r => r.combEstado === 'estimado'),
+      uber: estadUber(d)
+    };
+  }
+  // Carro − Uber de un grupo de días (solo los días que tienen los datos de Uber).
+  function estadUber(d) {
+    const s = (c, l) => l.reduce((a, r) => a + (r[c] || 0), 0);
+    const du = d.filter(r => r.uberKm != null);
+    const kmCarro = s('km', du), km = s('uberKm', du), ing = s('ingreso', du);
+    const dh = du.filter(r => r.horasVacio != null), horasCarro = s('horas', dh), horas = s('uberHoras', dh);
+    const dv = du.filter(r => r.viajes > 0), viajes = s('viajes', dv);
+    const dvh = dv.filter(r => r.horasVacio != null);
+    return {
+      dias: du.length, kmCarro, km, kmVacio: kmCarro - km, pct: kmCarro > 0 ? km / kmCarro : null,
+      combVacio: s('combVacio', du), comb: s('combustible', du),
+      horasCarro, horas, horasVacio: horasCarro - horas, diasHoras: dh.length,
+      viajes, ingresoViaje: viajes ? s('ingreso', dv) / viajes : null,
+      kmRecogida: viajes ? (s('km', dv) - s('uberKm', dv)) / viajes : null,
+      minRecogida: dvh.length && s('viajes', dvh) ? s('horasVacio', dvh) * 60 / s('viajes', dvh) : null,
+      ingresoKm: km > 0 ? ing / km : null
     };
   }
 

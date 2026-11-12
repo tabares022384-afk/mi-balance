@@ -238,6 +238,15 @@
       B.tramos.forEach((t, i) => { h += htmlTramo(t, i); });
       h += '<button type="button" class="btn sec" data-accion="jTramo">➕ Agregar tramo (tanqueé en medio de la jornada)</button>';
       h += '<p class="ayuda">Horas: si dejas una de las dos vacías, se toma como 0.</p>';
+      const u = B.uber || {}, uh = esNum(u.minutos) ? Math.floor(u.minutos / 60) : null, um = esNum(u.minutos) ? Math.round(u.minutos % 60) : null;
+      h += `<fieldset class="tramo"><legend>📱 Lo que dice Uber del día</legend>
+        <p class="ayuda" style="margin-top:0">Copia del resumen del día en la app de Uber. La app lo resta del trip del carro para saber cuánto te cuesta ir por los servicios.</p>
+        <div class="dos"><div><label class="etq" for="uViajes">🚕 Viajes</label><input id="uViajes" data-u="viajes" inputmode="numeric" placeholder="0" value="${esNum(u.viajes) ? u.viajes : ''}"></div>
+        <div><label class="etq" for="uKm">👤 Km de los viajes</label><input id="uKm" data-u="km" inputmode="decimal" placeholder="km" value="${verDecimal(u.km)}"></div></div>
+        <span class="etq" style="margin-top:10px">⏱️ Tiempo en viaje (con pasajero)</span>
+        <div class="dos"><div><label class="ayuda" for="uHoras" style="margin:0 0 4px">Horas</label><input id="uHoras" data-u="h" inputmode="numeric" placeholder="0" value="${uh != null ? uh : ''}"></div>
+        <div><label class="ayuda" for="uMin" style="margin:0 0 4px">Minutos</label><input id="uMin" data-u="m" inputmode="numeric" placeholder="0" value="${um != null ? um : ''}"></div></div>
+        <div class="ayuda" id="uRes">${textoUber()}</div></fieldset>`;
     }
     h += `<div class="campo"><label for="jObs">📝 Observaciones</label><textarea id="jObs" placeholder="Opcional">${esc(B.obs || '')}</textarea></div>`;
     h += '<div id="jPrev"></div>';
@@ -265,6 +274,21 @@
       ${i > 0 ? `<button type="button" class="btn peligro chico" style="margin-top:10px" data-accion="jQuitarTramo" data-t="${i}">Quitar este tramo</button>` : ''}
     </fieldset>`;
   }
+  function horasTxt(h) {
+    if (!esNum(h)) return '—';
+    const neg = h < 0, t = Math.round(Math.abs(h) * 60), hh = Math.floor(t / 60), mm = t % 60;
+    return (neg ? '−' : '') + (hh ? hh + ' h' + (mm ? ' ' : '') : '') + (mm || !hh ? mm + ' min' : '');
+  }
+  // Resta en vivo mientras Edwin escribe: carro − Uber.
+  function textoUber() {
+    const u = B.uber || {};
+    const km = B.tramos.reduce((s, t) => s + (esNum(t.kmIni) && esNum(t.kmFin) ? t.kmFin - t.kmIni : 0), 0);
+    const horas = B.tramos.reduce((s, t) => s + (esNum(t.horasCon) ? t.horasCon : 0) + (esNum(t.horasSin) ? t.horasSin : 0), 0);
+    const p = [];
+    if (esNum(u.km) && km > 0) p.push(`🔁 Sin pasajero: <b>${F.num(km - u.km)} km</b> de ${F.num(km)} (${F.num((km - u.km) / km * 100, 0)} %)`);
+    if (esNum(u.minutos) && horas > 0) p.push(`⌛ Sin pasajero: <b>${horasTxt(horas - u.minutos / 60)}</b> de ${horasTxt(horas)}`);
+    return p.length ? p.join('<br>') : 'Opcional. Si lo llenas, la app calcula km, tiempo y gasolina sin pasajero.';
+  }
   function textoHoras(t) {
     const c = esNum(t.horasCon) ? t.horasCon : null, s = esNum(t.horasSin) ? t.horasSin : null;
     if (c == null && s == null) return 'Sin horas: el combustible se calcula como mitad con aire y mitad sin aire';
@@ -276,6 +300,16 @@
     const el = e.target;
     if (el.id === 'jIng') { B.ingreso = leerDinero(el.value); if (e.type === 'input') el.value = verDinero(B.ingreso); }
     else if (el.id === 'jObs') B.obs = el.value;
+    else if (el.dataset.u) {
+      const u = B.uber = B.uber || {}, c = el.dataset.u;
+      if (c === 'viajes') u.viajes = leerDinero(el.value);
+      else if (c === 'km') u.km = leerDecimal(el.value);
+      else {
+        const h = leerDinero($('#uHoras').value), m = leerDinero($('#uMin').value);
+        u.minutos = h == null && m == null ? null : (h || 0) * 60 + (m || 0);
+      }
+      $('#uRes').innerHTML = textoUber();
+    }
     else if (el.dataset.t != null && el.dataset.c) {
       const i = +el.dataset.t, t = B.tramos[i], c = el.dataset.c;
       t[c] = c === 'intervalo' ? el.value || null : leerDecimal(el.value);
@@ -336,6 +370,9 @@
       if (esNum(x.horasSin) && !esNum(x.horasCon)) x.horasCon = 0;
       return x;
     });
+    if (trabaja && b.uber && (esNum(b.uber.viajes) || esNum(b.uber.km) || esNum(b.uber.minutos))) {
+      j.uber = { viajes: esNum(b.uber.viajes) ? b.uber.viajes : null, km: esNum(b.uber.km) ? b.uber.km : null, minutos: esNum(b.uber.minutos) ? b.uber.minutos : null };
+    }
     if (b.creado) j.creado = b.creado;
     return j;
   }
@@ -379,6 +416,14 @@
     if (r.trabaja) {
       h += ln('⚡ Ingreso por km · por hora', (r.ingresoKm != null ? F.dinero(r.ingresoKm) : '—') + ' · ' + (r.ingresoHora != null ? F.dinero(r.ingresoHora) : '—'));
       h += ln(`🛣️ Frente a ${F.num(r.kmRef)} km de referencia`, (r.difKm >= 0 ? '+' : '') + F.num(r.difKm) + ' km');
+      if (r.kmVacio != null) {
+        h += ln('👤 Km con pasajero (Uber)', `${F.num(r.uberKm)} km · ${F.num(r.pctPagado * 100, 0)} %`);
+        h += ln('🔁 Km sin pasajero (ir por servicios)', `<span class="aviso">${F.num(r.kmVacio)} km · ${F.num((1 - r.pctPagado) * 100, 0)} %</span>`);
+        h += ln('⛽ Gasolina de los km sin pasajero', `<span class="c-comb">${F.dinero(r.combVacio)}</span>`);
+        if (r.ingresoKmUber != null) h += ln('💵 Valor del km con pasajero', F.dinero(r.ingresoKmUber));
+      }
+      if (r.horasVacio != null) h += ln('⌛ Tiempo sin pasajero', `<span class="aviso">${horasTxt(r.horasVacio)}</span> de ${horasTxt(r.horas)}`);
+      if (r.viajes) h += ln(`🚕 ${r.viajes} viajes`, (r.ingresoViaje != null ? F.dinero(r.ingresoViaje) + ' por viaje' : '') + (r.kmRecogida != null ? ` · ${F.num(r.kmRecogida)} km` + (r.minRecogida != null ? ` y ${F.num(r.minRecogida, 0)} min` : '') + ' para recoger cada uno' : ''));
       if (r.tramos.length > 1) r.tramos.forEach(t => { h += ln(`Tramo ${t.n} · ${t.intervalo ? esc(t.intervalo.nombre) : 'sin intervalo'}`, `${F.num(t.km)} km · ${F.dinero(t.costo)}`); });
     }
     h += '</div>';
@@ -698,7 +743,7 @@
     if (n === '1' && extra === 'meta') filtroTipos = new Set(['oficial', 'novedad']);
     let h = selectorMes() + `<div class="tabs">${[['1', '📅 Día a día'], ['k', '🛣️ Mi km'], ['2', '📊 Acumulados'], ['3', '⛽ Combustible'], ['g', '📈 Gráficas']].map(([k, t]) => `<button class="chip ${n === k ? 'on' : ''}" data-ir="#/informes/${k}">${t}</button>`).join('')}</div>`;
     if (n === '1') h += informe1(); else if (n === 'k') h += informeKm(); else if (n === '2') h += informe2(); else if (n === '3') h += informe3(); else h += informeGraficas();
-    return { titulo: n === 'k' ? 'Mi kilómetro' : n === '1' ? 'Día a día' : 'Informes', html: h, nav: n === 'k' ? 'km' : n === '1' ? 'dia' : 'mas' };
+    return { titulo: n === 'k' ? 'Recorridos y valor del km' : n === '1' ? 'Día a día' : 'Informes', html: h, nav: n === 'k' ? 'km' : n === '1' ? 'dia' : 'mas' };
   }
   function vKm() { return vInformes('k'); }
 
@@ -719,6 +764,27 @@
     h += tarjeta('💵 Bruto por km (mes)', F.dinero(mes.brutoKm), 'lo que paga Uber por km', '!irLista');
     h += tarjeta('⛽ Gasolina por km (mes)', `<span class="c-comb">${F.dinero(mes.combKm)}</span>`, mes.provisional ? 'incluye días con gasolina provisional' : 'con lo realmente pagado', '#/informes/3');
     h += '</div>';
+
+    // ---- Carro − Uber: km, tiempo y gasolina sin pasajero (ir por los servicios)
+    const UM = mes.uber;
+    h += '<h2>🔁 Carro − Uber: lo que te cuesta ir por los servicios</h2>';
+    if (!UM.dias) {
+      h += `<div class="caja"><p>Aún no hay días con los datos de Uber en ${F.mes(mesVista).split(' ')[0].toLowerCase()}. En cada jornada llena la sección <b>📱 Lo que dice Uber del día</b> (viajes, km y tiempo en viaje) y aquí verás cuántos km, cuánto tiempo y cuánta gasolina se van sin pasajero.</p><a class="btn sec" href="#/jornada/${C.hoy}">➕ Ir a la jornada de hoy</a></div>`;
+    } else {
+      h += '<div class="tarjetas">';
+      h += tarjeta('👤 Km pagados (con pasajero)', `<span class="bien">${F.num(UM.pct * 100, 0)} %</span>`, `${F.num(UM.km)} de ${F.num(UM.kmCarro)} km · ${UM.dias} día${UM.dias === 1 ? '' : 's'} con datos de Uber`, '!irLista');
+      h += tarjeta('🔁 Km sin pasajero', `<span class="aviso">${F.num(UM.kmVacio)} km</span>`, `${F.num(UM.kmVacio / UM.dias)} km por día en promedio`, '!irLista');
+      h += tarjeta('⛽ Gasolina sin pasajero', `<span class="c-comb">${F.dinero(UM.combVacio)}</span>`, UM.comb ? `${F.num(UM.combVacio / UM.comb * 100, 0)} % de la gasolina de esos días` : '', '!irLista');
+      if (UM.diasHoras) h += tarjeta('⌛ Tiempo sin pasajero', `<span class="aviso">${horasTxt(UM.horasVacio)}</span>`, `de ${horasTxt(UM.horasCarro)} trabajadas (${F.num(UM.horasVacio / UM.horasCarro * 100, 0)} %)`, '!irLista');
+      if (UM.viajes) h += tarjeta('🚕 Para recoger cada viaje', `${F.num(UM.kmRecogida)} km`, (UM.minRecogida != null ? `${F.num(UM.minRecogida, 0)} min · ` : '') + `${UM.viajes} viajes · ${F.dinero(UM.ingresoViaje)} por viaje`, '!irLista');
+      if (UM.ingresoKm != null) h += tarjeta('💵 Valor del km con pasajero', F.dinero(UM.ingresoKm), `contra ${F.dinero(mes.brutoKm)} por km total del carro`, '!irLista');
+      h += '</div>';
+      const diasU = dias.filter(r => r.pctPagado != null);
+      h += grafica('gVacio', '🔁 % de km sin pasajero por día (más bajo es mejor)', diasU.map(r => ({
+        et: String(+r.fecha.slice(8)), v: (1 - r.pctPagado) * 100, color: 'var(--aviso)', ir: '#/jornada/' + r.fecha,
+        txt: F.fecha(r.fecha) + ' · ' + F.num(r.kmVacio) + ' km sin pasajero (' + F.num((1 - r.pctPagado) * 100, 0) + ' %) · ' + F.dinero(r.combVacio) + ' de gasolina'
+      })), { linea: (1 - UM.pct) * 100, lineaTxt: 'promedio ' + F.num((1 - UM.pct) * 100, 0) + ' %' });
+    }
 
     // ---- Ideas para que el km valga más (con los datos reales de Edwin, desde el inicio)
     const todos = C.jornadas.filter(r => r.trabaja && r.ingreso != null && r.km > 0);
@@ -742,6 +808,16 @@
       const cortos = E(orden.slice(0, mitad)), largos = E(orden.slice(mitad));
       ideas.push(`Días largos (más de ${F.num(orden[mitad].km, 0)} km): <b>${F.dinero(largos.netoKm)}/km</b> · días cortos: <b>${F.dinero(cortos.netoKm)}/km</b>. ${largos.netoKm >= cortos.netoKm ? 'Rodar más te está rindiendo.' : 'Los km de más te rinden menos: puede haber muchos km vacíos (sin pasajero).'}`);
     }
+    if (UM.dias && mes.combKm) {
+      const vpd = UM.viajes ? UM.viajes / dias.filter(r => r.viajes > 0).length : null;
+      ideas.push(`Cada km sin pasajero te cuesta unos <b>${F.dinero(mes.combKm)}</b> de gasolina y no te lo paga nadie.` + (vpd ? ` Si cada recogida fuera <b>1 km más corta</b>, con tus ~${F.num(vpd, 0)} viajes por día te ahorrarías <b>${F.dinero(vpd * mes.combKm)}</b> diarios y unos <b>${F.dinero(vpd * mes.combKm * oficialesMes)}</b> al mes.` : ''));
+      const conU = todos.filter(r => r.pctPagado != null);
+      if (conU.length >= 4) {
+        const o = conU.slice().sort((a, b) => b.pctPagado - a.pctPagado), m2 = Math.floor(o.length / 2);
+        const buenos = E(o.slice(0, m2)), malos = E(o.slice(m2));
+        ideas.push(`Días con menos km sin pasajero: tu km vale <b>${F.dinero(buenos.netoKm)}</b>; días con más km sin pasajero: <b>${F.dinero(malos.netoKm)}</b>.`);
+      }
+    }
     const bajos = dias.filter(r => r.netoKm < prom).length;
     ideas.push(`Este mes ${bajos} de ${dias.length} días quedaron por debajo de tu promedio. Revisa en la lista de abajo qué tuvieron en común (hora, zona, aire, km).`);
     h += `<div class="caja pozo"><h3 style="margin-top:0" class="c-pozo">💡 Para que tu km valga más</h3>${ideas.map(t => `<p>• ${t}</p>`).join('')}<p class="peq suave">Calculado con tus jornadas reales. Con más días registrados, estas comparaciones se vuelven más confiables.</p></div>`;
@@ -763,7 +839,7 @@
     }
     h += `<h2 id="kmLista">Día a día de ${F.mes(mesVista)}</h2><button class="btn sec" data-accion="excel" data-q="km">📊 Descargar Excel del valor del km</button><div class="lista" style="margin-top:12px">`;
     h += dias.slice().reverse().map(r => `<button class="item" data-ir="#/jornada/${r.fecha}"><div class="arriba"><b>${F.fecha(r.fecha)} · ${TIPOS[r.tipo][0]} ${TIPOS[r.tipo][1]}</b><span class="valor ${r.netoKm >= prom ? 'bien' : 'mal'}">${F.dinero(r.netoKm)}/km</span></div>
-      <div class="datos"><span>🛣️ <b>${F.num(r.km)}</b> km</span><span>💵 <b>${F.dinero(r.ingreso / r.km)}</b>/km bruto</span><span>⛽ <b>${F.dinero(r.combKm)}</b>/km${r.combEstado === 'estimado' ? ' (prov.)' : ''}</span><span>Neto del día <b>${F.dinero(r.neto)}</b></span>${r.netoHora != null ? `<span>⏱️ <b>${F.dinero(r.netoHora)}</b>/h</span>` : ''}${r.fracAire != null ? `<span>❄️ ${F.num(r.fracAire * 100, 0)} % con aire</span>` : ''}<span>${cmp(r.netoKm, prom)} vs promedio</span></div></button>`).join('');
+      <div class="datos"><span>🛣️ <b>${F.num(r.km)}</b> km</span><span>💵 <b>${F.dinero(r.ingreso / r.km)}</b>/km bruto</span><span>⛽ <b>${F.dinero(r.combKm)}</b>/km${r.combEstado === 'estimado' ? ' (prov.)' : ''}</span><span>Neto del día <b>${F.dinero(r.neto)}</b></span>${r.netoHora != null ? `<span>⏱️ <b>${F.dinero(r.netoHora)}</b>/h</span>` : ''}${r.fracAire != null ? `<span>❄️ ${F.num(r.fracAire * 100, 0)} % con aire</span>` : ''}${r.kmVacio != null ? `<span class="aviso">🔁 <b>${F.num(r.kmVacio)}</b> km sin pasajero · ${F.dinero(r.combVacio)}</span>` : ''}${r.horasVacio != null ? `<span class="aviso">⌛ ${horasTxt(r.horasVacio)} sin pasajero</span>` : ''}${r.viajes ? `<span>🚕 ${r.viajes} viajes${r.kmRecogida != null ? ' · ' + F.num(r.kmRecogida) + ' km por recogida' : ''}</span>` : ''}<span>${cmp(r.netoKm, prom)} vs promedio</span></div></button>`).join('');
     h += '</div>';
     return h;
   }
@@ -779,6 +855,9 @@
     if (r.apoyo > 0) d += `<span>💧 apoyo <b>${F.dinero(r.apoyo)}</b></span>`;
     if (r.apoyoPendiente > 0) d += `<span class="aviso">💧 por confirmar <b>${F.dinero(r.apoyoPendiente)}</b></span>`;
     if (r.tipo === 'oficial' || r.tipo === 'novedad') d += `<span>🚗 <b>${F.dinero(r.cuota)}</b></span>`;
+    if (r.kmVacio != null) d += `<span class="aviso">🔁 <b>${F.num(r.kmVacio)}</b> km sin pasajero (${F.num((1 - r.pctPagado) * 100, 0)} %)</span>`;
+    if (r.horasVacio != null) d += `<span class="aviso">⌛ <b>${horasTxt(r.horasVacio)}</b> sin pasajero</span>`;
+    if (r.viajes) d += `<span>🚕 <b>${r.viajes}</b> viajes</span>`;
     if (r.tramos.length > 1) d += `<span>Tramos: ${r.tramos.map(t => (t.intervalo ? esc(t.intervalo.nombre) : '?') + ' ' + F.num(t.km) + ' km').join(' · ')}</span>`;
     else if (r.intervalos.length) d += `<span>Intervalo ${esc(r.intervalos.join(', '))}</span>`;
     if (r.jornada.obs) d += `<span>📝 ${esc(r.jornada.obs)}</span>`;
@@ -873,9 +952,11 @@
       archivo = `Mi Balance - Dia a dia - ${nm}.xlsx`;
     } else if (q === 'km') {
       const dias = M.jornadas.filter(r => r.trabaja && r.ingreso != null && r.km > 0), E = Calc.estadKm(dias);
-      hoja = { nombre: 'Valor del km', columnas: [['Fecha', 'txt'], ['Día', 'txt'], ['Tipo de jornada', 'txt'], ['Km recorridos', 'dec1'], ['Horas', 'dec1'], ['% del tiempo con aire', 'int'], ['Ingreso bruto', 'int'], ['Gasolina asignada', 'int'], ['Estado de la gasolina', 'txt'], ['Neto del día (ingreso − gasolina)', 'int'], ['Bruto por km', 'int'], ['Gasolina por km', 'int'], ['Valor neto por km', 'int'], ['Neto por hora', 'int'], ['Diferencia vs promedio del mes', 'int']].map(([t, tipo]) => ({ t, tipo })),
-        filas: dias.map(r => [F.fechaNum(r.fecha), r.dia, TIPOS[r.tipo][1], r1(r.km), r1(r.horas), r.fracAire != null ? rd(r.fracAire * 100) : null, rd(r.ingreso), rd(r.combustible), NOMBRE_ESTADO[r.combEstado], rd(r.neto), rd(r.ingreso / r.km), rd(r.combKm), rd(r.netoKm), rd(r.netoHora), rd(r.netoKm - E.netoKm)])
-          .concat([['Total del mes', '', '', r1(E.km), r1(E.horas), null, rd(E.ingreso), rd(E.comb), '', rd(E.neto), rd(E.brutoKm), rd(E.combKm), rd(E.netoKm), rd(E.netoHora), null]]) };
+      hoja = { nombre: 'Valor del km', columnas: [['Fecha', 'txt'], ['Día', 'txt'], ['Tipo de jornada', 'txt'], ['Km recorridos', 'dec1'], ['Horas', 'dec1'], ['% del tiempo con aire', 'int'], ['Ingreso bruto', 'int'], ['Gasolina asignada', 'int'], ['Estado de la gasolina', 'txt'], ['Neto del día (ingreso − gasolina)', 'int'], ['Bruto por km', 'int'], ['Gasolina por km', 'int'], ['Valor neto por km', 'int'], ['Neto por hora', 'int'], ['Diferencia vs promedio del mes', 'int'], ['Viajes (Uber)', 'int'], ['Km con pasajero (Uber)', 'dec1'], ['Km sin pasajero', 'dec1'], ['% km sin pasajero', 'int'], ['Gasolina sin pasajero', 'int'], ['Horas en viaje (Uber)', 'dec2'], ['Horas sin pasajero', 'dec2'], ['Km para recoger por viaje', 'dec1'], ['Minutos para recoger por viaje', 'int'], ['Valor del km con pasajero', 'int']].map(([t, tipo]) => ({ t, tipo })),
+        filas: dias.map(r => [F.fechaNum(r.fecha), r.dia, TIPOS[r.tipo][1], r1(r.km), r1(r.horas), r.fracAire != null ? rd(r.fracAire * 100) : null, rd(r.ingreso), rd(r.combustible), NOMBRE_ESTADO[r.combEstado], rd(r.neto), rd(r.ingreso / r.km), rd(r.combKm), rd(r.netoKm), rd(r.netoHora), rd(r.netoKm - E.netoKm),
+          r.viajes, r1(r.uberKm), r1(r.kmVacio), r.pctPagado != null ? rd((1 - r.pctPagado) * 100) : null, rd(r.combVacio), r2(r.uberHoras), r2(r.horasVacio), r1(r.kmRecogida), rd(r.minRecogida), rd(r.ingresoKmUber)])
+          .concat([['Total del mes', '', '', r1(E.km), r1(E.horas), null, rd(E.ingreso), rd(E.comb), '', rd(E.neto), rd(E.brutoKm), rd(E.combKm), rd(E.netoKm), rd(E.netoHora), null,
+            E.uber.viajes || null, E.uber.dias ? r1(E.uber.km) : null, E.uber.dias ? r1(E.uber.kmVacio) : null, E.uber.pct != null ? rd((1 - E.uber.pct) * 100) : null, E.uber.dias ? rd(E.uber.combVacio) : null, E.uber.diasHoras ? r2(E.uber.horas) : null, E.uber.diasHoras ? r2(E.uber.horasVacio) : null, r1(E.uber.kmRecogida), rd(E.uber.minRecogida), rd(E.uber.ingresoKm)]]) };
       archivo = `Mi Balance - Valor del km - ${nm}.xlsx`;
     } else if (q === 'pozo') {
       const P = M.pozo;

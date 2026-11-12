@@ -100,7 +100,10 @@ fieldset.tramo legend{font-weight:800;padding:0 6px}
 .reparto{display:grid;gap:2px}
 .reparto .ln{display:flex;justify-content:space-between;gap:10px;padding:9px 2px;border-bottom:1px solid var(--linea);font-size:1.05rem}
 .reparto .ln:last-child{border-bottom:0}
-.reparto .ln b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.reparto .ln b{font-variant-numeric:tabular-nums;text-align:right;max-width:62%;overflow-wrap:normal;word-break:keep-all}
+.reparto .ln span{min-width:0}
+fieldset{min-width:0}
+main{overflow-x:hidden}
 .reparto .tot{font-size:1.2rem;font-weight:800}
 .etiqueta{display:inline-block;font-size:.76rem;font-weight:800;padding:2px 8px;border-radius:10px;background:var(--panel2);border:1px solid var(--linea);vertical-align:middle}
 .e-confirmado{color:var(--bien);border-color:var(--bien)}
